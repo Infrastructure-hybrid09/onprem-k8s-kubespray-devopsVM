@@ -2,6 +2,8 @@
 
 CentOS Stream 9 VM 6대에 **Kubespray v2.31.0 + Ansible**로 self-managed Kubernetes HA 클러스터를 구축하는 실행 저장소다. 모든 명령은 별도 표시가 없으면 **PC2 DevOps VM의 `devops` 계정**에서 프로젝트 루트를 현재 디렉터리로 두고 실행한다.
 
+> 현재 저장소 릴리스: **v1.0.1** (2026-08-27). v1.0.0에서 검증한 플랫폼 구성요소는 변경하지 않고, 운영 기준과 릴리스 설명을 정리한 문서 패치다.
+
 > 이 저장소는 기존 NIC/IP/gateway/route를 변경하지 않는다. CP/Worker 역할을 합치지 않으며 DevOps VM을 클러스터에 넣지 않는다.
 
 ## 실행 위치 고정 원칙

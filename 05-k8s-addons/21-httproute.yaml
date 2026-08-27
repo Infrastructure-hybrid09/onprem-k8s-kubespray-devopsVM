@@ -1,0 +1,22 @@
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: validation-echo
+  namespace: application
+  labels:
+    validation.neuroplan.io/owned: "true"
+spec:
+  parentRefs:
+    - name: neuroplan-gateway
+      sectionName: https
+  hostnames:
+    - app.nplan.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /validation
+      backendRefs:
+        - name: validation-echo
+          port: 80

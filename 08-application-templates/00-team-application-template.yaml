@@ -1,0 +1,373 @@
+# ==============================================================================
+# NeuroPlan 팀 공용 Kubernetes 애플리케이션 템플릿
+# ==============================================================================
+# 목적
+# - 팀원이 이 파일을 복사한 뒤 이름, image, port, probe만 바꿔 배포할 수 있게 한다.
+# - ConfigMap, Deployment, Service, HPA, PDB, HTTPRoute의 연결 관계를 한 파일에서 보여준다.
+# - 이 파일의 기본값은 사설 Registry의 NGINX image로 즉시 smoke test할 수 있다.
+#
+# 현재 플랫폼 기준
+# - Namespace: application
+# - 외부 hostname: app.nplan.local
+# - Gateway: application/neuroplan-gateway, HTTPS listener 이름: https
+# - Service VIP: 192.168.24.100:443
+# - Worker NGF NodePort: 192.168.34.41~43:30443
+# - Kubernetes Service DNS domain: neuroplan.local
+# - 사설 Registry: 192.168.34.21:5000
+#
+# ==============================================================================
+# 사설 Registry 안내
+# ==============================================================================
+# 전체 image 경로 형식:
+#   192.168.34.21:5000/<PROJECT>/<IMAGE>:<TAG>
+#
+# 현재 Registry에 동기화되어 검증된 image 목록:
+#   192.168.34.21:5000/neuroplan/nginx:1.28-alpine
+#   192.168.34.21:5000/neuroplan/busybox:1.36.1
+#   192.168.34.21:5000/neuroplan/curl:8.12.1
+#   192.168.34.21:5000/neuroplan/nginx-gateway-fabric:2.6.7
+#   192.168.34.21:5000/neuroplan/nginx-gateway-fabric-nginx:2.6.7
+#
+# Registry 조회:
+#   curl -fsS http://192.168.34.21:5000/v2/_catalog | jq
+#   curl -fsS http://192.168.34.21:5000/v2/neuroplan/nginx/tags/list | jq
+#
+# 주의:
+# - 사설 Registry는 실습망 전용 HTTP/no-auth Registry다.
+# - 노드 containerd에는 이 Registry 사용 설정이 이미 적용되어 있다.
+# - 사설 Registry image에는 imagePullSecret이 필요하지 않다.
+# - Docker Hub image를 직접 사용하면 application/dockerhub-pull Secret을 사용한다.
+# - `latest` 대신 버전 tag 또는 digest를 사용한다.
+# - Frontend/Backend image가 완성되면 Registry에 다음처럼 저장하는 것을 권장한다.
+#     192.168.34.21:5000/neuroplan/frontend:0.1.0
+#     192.168.34.21:5000/neuroplan/backend:0.1.0
+#
+# ==============================================================================
+# 사용 순서
+# ==============================================================================
+# 1. 이 파일을 서비스 전용 파일로 복사한다.
+#      cp 08-application-templates/00-team-application-template.yaml \
+#         08-application-templates/my-service.yaml
+#
+# 2. `[수정 필요]`와 `team-app`을 검색해 값을 바꾼다.
+#      rg -n '\[수정 필요\]|team-app' \
+#        08-application-templates/my-service.yaml
+#
+# 3. 서버 검증 후 적용한다.
+#      kubectl apply --dry-run=server \
+#        -f 08-application-templates/my-service.yaml
+#      kubectl apply -f 08-application-templates/my-service.yaml
+#
+# 4. 상태를 확인한다.
+#      kubectl -n application rollout status deployment/team-app
+#      kubectl -n application get deploy,pod,svc,hpa,pdb,httproute
+#
+# 5. 기본 예제 접속:
+#      curl -ksS https://app.nplan.local/team-app/
+#
+# 6. 삭제가 필요하면 복사한 서비스 전용 파일로만 삭제한다.
+#      kubectl delete -f 08-application-templates/my-service.yaml
+#
+# ==============================================================================
+# Secret 생성 예시 - 실제 비밀번호/API Key를 이 YAML이나 Git에 넣지 않는다.
+# ==============================================================================
+# DB Secret 예시:
+#   read -rsp 'DB password: ' DB_PASSWORD; echo
+#   kubectl -n application create secret generic team-app-db \
+#     --from-literal=DB_HOST='192.168.44.21' \
+#     --from-literal=DB_PORT='4006' \
+#     --from-literal=DB_NAME='neuroplan' \
+#     --from-literal=DB_USERNAME='neuroplan_app' \
+#     --from-literal=DB_PASSWORD="$DB_PASSWORD" \
+#     --dry-run=client -o yaml | kubectl apply -f -
+#   unset DB_PASSWORD
+#
+# LLM Secret 예시:
+#   read -rsp 'GROQ API key: ' GROQ_API_KEY; echo
+#   kubectl -n application create secret generic team-app-llm \
+#     --from-literal=GROQ_API_KEY="$GROQ_API_KEY" \
+#     --dry-run=client -o yaml | kubectl apply -f -
+#   unset GROQ_API_KEY
+#
+# Secret 사용 시 아래 Deployment의 envFrom 예제 주석을 제거한다.
+# ==============================================================================
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  # [수정 필요] 서비스 이름-config 형식을 권장한다.
+  name: team-app-config
+  namespace: application
+  labels:
+    app.kubernetes.io/name: team-app
+    app.kubernetes.io/part-of: neuroplan
+data:
+  # ConfigMap에는 공개 가능한 일반 설정만 넣는다.
+  APP_NAME: "team-app"
+  APP_ENV: "development"
+  LOG_LEVEL: "INFO"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # [수정 필요] 관련 Service/HPA/PDB/HTTPRoute와 같은 이름으로 유지한다.
+  name: team-app
+  namespace: application
+  labels:
+    app.kubernetes.io/name: team-app
+    app.kubernetes.io/instance: team-app
+    app.kubernetes.io/part-of: neuroplan
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  # HPA가 적용되면 실제 replica 수는 HPA가 min~max 범위에서 관리한다.
+  replicas: 3
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+
+  # RollingUpdate 중 가용 Pod 수를 유지한다.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  # selector와 template label은 반드시 일치해야 한다.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: team-app
+      app.kubernetes.io/instance: team-app
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: team-app
+        app.kubernetes.io/instance: team-app
+        app.kubernetes.io/part-of: neuroplan
+    spec:
+      # Kubernetes API를 직접 사용하지 않는 일반 앱은 ServiceAccount token을 끈다.
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+
+      # 사설 Registry는 인증이 없으므로 imagePullSecrets가 필요 없다.
+      # Docker Hub image를 직접 쓰는 경우에만 아래 주석을 제거한다.
+      # imagePullSecrets:
+      #   - name: dockerhub-pull
+
+      # Worker 한 대 장애가 전체 replica에 영향을 주지 않도록 가능한 한 분산한다.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: team-app
+                    app.kubernetes.io/instance: team-app
+
+      containers:
+        - name: team-app
+          # [수정 필요] 기본값은 Registry/NGINX smoke test image다.
+          # Frontend 예: 192.168.34.21:5000/neuroplan/frontend:0.1.0
+          # Backend 예:  192.168.34.21:5000/neuroplan/backend:0.1.0
+          image: 192.168.34.21:5000/neuroplan/nginx:1.28-alpine
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              # [수정 필요]
+              # NGINX Frontend: 80
+              # Spring Boot Backend: 8080
+              containerPort: 80
+              protocol: TCP
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            # [수정 필요] 사용 image가 non-root 실행을 지원하면 true로 강화한다.
+            runAsNonRoot: false
+            # [수정 필요] 쓰기 경로가 필요 없는 image라면 true로 강화한다.
+            readOnlyRootFilesystem: false
+
+          # requests는 Scheduler가 보장할 최소값이고 HPA CPU 계산의 분모가 된다.
+          # Frontend 초기값: 50m/64Mi, Backend 초기값: 500m/512Mi 권장.
+          resources:
+            requests:
+              # [수정 필요]
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              # [수정 필요]
+              cpu: 250m
+              memory: 256Mi
+
+          # startupProbe는 기동이 느린 Spring Boot에서 특히 유용하다.
+          # 실패 허용 시간: 5초 x 60회 = 최대 약 5분.
+          startupProbe:
+            httpGet:
+              # [수정 필요] Spring Boot 권장: /actuator/health/liveness
+              path: /
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 60
+
+          # readiness 실패 시 Container는 유지하고 Service endpoint에서 제외한다.
+          readinessProbe:
+            httpGet:
+              # [수정 필요] Spring Boot 권장: /actuator/health/readiness
+              path: /
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+            successThreshold: 1
+
+          # liveness 실패 시 kubelet이 Container를 재시작한다.
+          # DB/LLM 같은 외부 의존성은 liveness에 포함하지 않는다.
+          livenessProbe:
+            httpGet:
+              # [수정 필요] Spring Boot 권장: /actuator/health/liveness
+              path: /
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          # ConfigMap의 모든 key를 동일한 환경 변수 이름으로 주입한다.
+          envFrom:
+            - configMapRef:
+                name: team-app-config
+
+            # DB 연동 시 Secret을 먼저 생성하고 아래 주석을 제거한다.
+            # - secretRef:
+            #     name: team-app-db
+
+            # Groq LLM 연동 시 Secret을 먼저 생성하고 아래 주석을 제거한다.
+            # - secretRef:
+            #     name: team-app-llm
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # [수정 필요] Deployment/HPA/PDB/HTTPRoute와 같은 이름으로 유지한다.
+  name: team-app
+  namespace: application
+  labels:
+    app.kubernetes.io/name: team-app
+    app.kubernetes.io/instance: team-app
+    app.kubernetes.io/part-of: neuroplan
+spec:
+  # 외부 노출은 NodePort를 추가하지 않고 기존 Gateway를 사용한다.
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: team-app
+    app.kubernetes.io/instance: team-app
+  ports:
+    - name: http
+      protocol: TCP
+      # Service 소비자가 사용하는 클러스터 내부 port다.
+      port: 80
+      # Deployment의 `http` container port로 전달한다.
+      targetPort: http
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: team-app
+  namespace: application
+  labels:
+    app.kubernetes.io/name: team-app
+    app.kubernetes.io/part-of: neuroplan
+spec:
+  # 자발적 중단(drain 등) 중 최소 2개의 replica를 유지한다.
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: team-app
+      app.kubernetes.io/instance: team-app
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: team-app
+  namespace: application
+  labels:
+    app.kubernetes.io/name: team-app
+    app.kubernetes.io/part-of: neuroplan
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: team-app
+  # Worker1~3 분산과 한 대 장애 대응을 위해 기본 3개를 유지한다.
+  minReplicas: 3
+  maxReplicas: 6
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+    scaleDown:
+      # 부하가 잠깐 낮아져도 즉시 축소하지 않도록 대기한다.
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # requests.cpu 대비 평균 사용률이 50%를 넘으면 확장을 검토한다.
+          averageUtilization: 50
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: team-app
+  namespace: application
+  labels:
+    app.kubernetes.io/name: team-app
+    app.kubernetes.io/part-of: neuroplan
+spec:
+  # 같은 Namespace의 기존 HTTPS Gateway에 연결한다.
+  parentRefs:
+    - name: neuroplan-gateway
+      sectionName: https
+  hostnames:
+    - app.nplan.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            # [수정 필요]
+            # Frontend가 `/`를 맡으면 기존 route와 충돌하지 않는지 먼저 확인한다.
+            # Backend 권장 경로는 `/api`, 기본 smoke test는 `/team-app`이다.
+            value: /team-app
+
+      # 기본 NGINX image가 `/team-app/` 대신 `/`를 받도록 prefix를 바꾼다.
+      # 애플리케이션이 원래 prefix를 필요로 하면 이 filters 블록을 제거한다.
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+
+      backendRefs:
+        - name: team-app
+          port: 80

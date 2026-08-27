@@ -1,0 +1,82 @@
+---
+- name: Apply the non-Kubernetes OS baseline
+  hosts: kubernetes_nodes
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+
+  tasks:
+    - name: Set inventory-controlled hostname
+      ansible.builtin.hostname:
+        name: "{{ host_name }}"
+        use: systemd
+
+    - name: Install management packages only
+      ansible.builtin.dnf:
+        name: "{{ baseline_packages }}"
+        state: present
+
+    - name: Ensure SSH server is enabled
+      ansible.builtin.systemd_service:
+        name: sshd
+        enabled: true
+        state: started
+
+    - name: Ensure passwordless sudo for the Ansible account
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/90-k8sadmin
+        owner: root
+        group: root
+        mode: "0440"
+        content: "k8sadmin ALL=(ALL) NOPASSWD: ALL\n"
+        validate: /usr/sbin/visudo -cf %s
+
+    - name: Install the canonical four-network project hosts file
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/hosts.j2"
+        dest: /etc/hosts
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+        validate: /usr/bin/test -s %s
+
+    - name: Remove the retired project shell profile
+      ansible.builtin.file:
+        path: /etc/profile.d/00-neuroplan-role-prompt.sh
+        state: absent
+
+    - name: Confirm intentionally excluded Kubespray-owned settings
+      ansible.builtin.debug:
+        msg:
+          - "No NIC/IP/route changes were made"
+          - "No Kubernetes repository/package/containerd/CNI was installed"
+          - "Swap, kernel modules, sysctl, NTP/timezone, SELinux and NetworkManager Calico rules remain Kubespray-owned"
+          - "firewalld remains Network-team-owned"
+
+- name: Apply the DevOps naming baseline without cluster-node changes
+  hosts: devops_control
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Set the DevOps inventory hostname
+      ansible.builtin.hostname:
+        name: "{{ host_name }}"
+        use: systemd
+
+    - name: Install the same canonical four-network hosts file on DevOps
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/hosts.j2"
+        dest: /etc/hosts
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+        validate: /usr/bin/test -s %s
+
+    - name: Confirm the DevOps boundary
+      ansible.builtin.debug:
+        msg:
+          - "DevOps remains outside kube_control_plane, etcd and kube_node"
+          - "No NIC/IP/route or Kubernetes runtime setting was changed"

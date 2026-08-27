@@ -1,0 +1,171 @@
+---
+- name: Install the DevOps private registry with Podman Quadlet
+  hosts: devops_control
+  become: true
+  gather_facts: true
+
+  vars:
+    registry_bind_ip: "192.168.34.21"
+    registry_port: 5000
+    registry_image: "docker.io/library/registry:2"
+    registry_data_dir: /var/lib/onprem-registry
+    dockerhub_auth_file: /home/devops/.config/containers/dockerhub-auth.json
+
+  pre_tasks:
+    - name: Require the fixed DevOps Internal IP
+      ansible.builtin.assert:
+        that:
+          - registry_bind_ip in ansible_facts.all_ipv4_addresses
+        fail_msg: >-
+          {{ registry_bind_ip }} is not assigned to the DevOps VM.
+          This playbook will not change network configuration.
+
+    - name: Install Podman registry tools
+      ansible.builtin.dnf:
+        name:
+          - podman
+          - skopeo
+          - curl
+          - jq
+        state: present
+
+    - name: Inspect the Docker Hub authentication file
+      ansible.builtin.stat:
+        path: "{{ dockerhub_auth_file }}"
+      register: dockerhub_auth
+
+    - name: Require the protected DevOps Docker Hub authentication file
+      ansible.builtin.assert:
+        that:
+          - dockerhub_auth.stat.exists
+          - dockerhub_auth.stat.isreg | default(false)
+          - (dockerhub_auth.stat.pw_name | default('')) == 'devops'
+          - (dockerhub_auth.stat.mode | default('')) == '0600'
+        fail_msg: >-
+          Run 04-registry/06-configure-dockerhub-auth.sh as devops before
+          installing the Registry. Do not place a Docker Hub token in Git.
+
+    - name: Check Quadlet generator
+      ansible.builtin.stat:
+        path: /usr/lib/systemd/system-generators/podman-system-generator
+      register: quadlet_generator
+
+    - name: Require Quadlet support
+      ansible.builtin.assert:
+        that:
+          - quadlet_generator.stat.exists
+          - quadlet_generator.stat.executable
+        fail_msg: "The installed Podman package does not provide the system Quadlet generator"
+
+  tasks:
+    - name: Create persistent registry data directory
+      ansible.builtin.file:
+        path: "{{ registry_data_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Create Quadlet directory
+      ansible.builtin.file:
+        path: /etc/containers/systemd
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create registries.conf drop-in directory
+      ansible.builtin.file:
+        path: /etc/containers/registries.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Configure DevOps Podman for the Internal HTTP registry
+      ansible.builtin.template:
+        src: templates/07-050-onprem-registry.conf.j2
+        dest: /etc/containers/registries.conf.d/050-onprem-registry.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Check whether the registry image is already local
+      ansible.builtin.command:
+        argv:
+          - podman
+          - image
+          - exists
+          - "{{ registry_image }}"
+      register: registry_image_exists
+      changed_when: false
+      failed_when: registry_image_exists.rc not in [0, 1]
+
+    - name: Pull the requested registry v2 image once
+      ansible.builtin.command:
+        argv:
+          - podman
+          - pull
+          - --authfile
+          - "{{ dockerhub_auth_file }}"
+          - "{{ registry_image }}"
+      when: registry_image_exists.rc == 1
+      changed_when: true
+
+    - name: Record the locally resolved image digest
+      ansible.builtin.shell: |
+        set -o pipefail
+        digest="$(podman image inspect {{ registry_image | quote }} | jq -r '.[0].Digest')"
+        test -n "$digest" && test "$digest" != "null"
+        printf '%s@%s\n' {{ registry_image | quote }} "$digest"
+      args:
+        executable: /bin/bash
+      register: registry_image_lock
+      changed_when: false
+
+    - name: Store registry image lock record
+      ansible.builtin.copy:
+        dest: /etc/containers/registry-image.lock
+        owner: root
+        group: root
+        mode: "0644"
+        content: "{{ registry_image_lock.stdout }}\n"
+
+    - name: Install the registry Quadlet
+      ansible.builtin.template:
+        src: templates/07-onprem-registry.container.j2
+        dest: /etc/containers/systemd/onprem-registry.container
+        owner: root
+        group: root
+        mode: "0644"
+      register: registry_quadlet
+
+    - name: Reload generated units
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Start or restart the Registry
+      ansible.builtin.systemd_service:
+        name: onprem-registry.service
+        state: "{{ registry_quadlet.changed | ternary('restarted', 'started') }}"
+
+    - name: Wait for the bound registry port
+      ansible.builtin.wait_for:
+        host: "{{ registry_bind_ip }}"
+        port: "{{ registry_port }}"
+        timeout: 60
+
+    - name: Verify Registry API v2
+      ansible.builtin.uri:
+        url: "http://{{ registry_bind_ip }}:{{ registry_port }}/v2/"
+        method: GET
+        status_code: 200
+        return_content: false
+
+    - name: Show lab-only security boundary
+      ansible.builtin.debug:
+        msg:
+          - "Registry is HTTP/no-auth and bound only to 192.168.34.21"
+          - "Network team must restrict TCP/5000 sources to the six Kubernetes Internal IPs"
+          - "registry:2 is retained for the requested lab; review migration to maintained registry v3 before long-term use"
+          - "No Docker Engine, Kubernetes package or node containerd file was changed"

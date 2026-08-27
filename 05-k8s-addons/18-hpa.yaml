@@ -1,0 +1,35 @@
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: validation-echo
+  namespace: application
+  labels:
+    validation.neuroplan.io/owned: "true"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: validation-echo
+  minReplicas: 3
+  maxReplicas: 6
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50

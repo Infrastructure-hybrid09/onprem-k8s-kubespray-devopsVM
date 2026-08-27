@@ -1,0 +1,41 @@
+---
+- name: Flatten the declared project host aliases
+  ansible.builtin.set_fact:
+    neuroplan_flat_host_names: >-
+      {{ neuroplan_host_records | map(attribute='names') | flatten }}
+
+- name: Require the complete collision-free host dataset
+  ansible.builtin.assert:
+    that:
+      - (neuroplan_host_records | length) == 33
+      - (neuroplan_flat_host_names | length) == 67
+      - (neuroplan_flat_host_names | unique | list | length) == (neuroplan_flat_host_names | length)
+    fail_msg: >-
+      The project host dataset must contain 33 records and 67 unique names.
+      Bare aliases belong to Management; use -dmz, -k8s and -data elsewhere.
+
+- name: Resolve every declared project host name over IPv4
+  ansible.builtin.command:
+    argv:
+      - getent
+      - ahostsv4
+      - "{{ item.1 }}"
+  loop: "{{ query('subelements', neuroplan_host_records, 'names') }}"
+  loop_control:
+    label: "{{ item.1 }} -> {{ item.0.ip }}"
+  register: neuroplan_host_resolution
+  changed_when: false
+  failed_when: false
+
+- name: Require every project name to resolve to its declared address
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+      - item.stdout | trim | length > 0
+      - (item.stdout.split() | first | default('')) == item.item[0].ip
+    fail_msg: >-
+      {{ item.item[1] }} did not resolve to {{ item.item[0].ip }}.
+      Actual getent output: {{ item.stdout | default('no output') }}
+  loop: "{{ neuroplan_host_resolution.results }}"
+  loop_control:
+    label: "{{ item.item[1] }}"

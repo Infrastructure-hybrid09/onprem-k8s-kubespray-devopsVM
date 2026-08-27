@@ -1,0 +1,29 @@
+# Generated or sensitive material
+.venv/
+03-kubespray/vendor/
+03-kubespray/inventory/mycluster/artifacts/
+03-kubespray/inventory/mycluster/credentials/
+logs/
+*.log
+*.retry
+*.db
+*.db.sha256
+
+# Credentials and local operator state
+*.key
+*.pem
+*.crt
+*.kubeconfig
+*.pub
+admin.conf
+kubeconfig
+vault-password*
+dockerhub-auth.json
+secrets/
+.env
+
+# Editors and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

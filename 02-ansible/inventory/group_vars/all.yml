@@ -1,0 +1,66 @@
+---
+baseline_packages:
+  - curl
+  - wget
+  - git
+  - vim-enhanced
+  - jq
+  - bash-completion
+  - tar
+  - rsync
+  - iproute
+  - bind-utils
+  - net-tools
+  - python3
+  - openssh-server
+  - sudo
+
+neuroplan_management_hosts:
+  - { ip: "192.168.14.11", names: ["lb1.nplan.local", "lb1"] }
+  - { ip: "192.168.14.12", names: ["lb2.nplan.local", "lb2"] }
+  - { ip: "192.168.14.21", names: ["devops.nplan.local", "devops"] }
+  - { ip: "192.168.14.31", names: ["cp1.nplan.local", "cp1"] }
+  - { ip: "192.168.14.32", names: ["cp2.nplan.local", "cp2"] }
+  - { ip: "192.168.14.33", names: ["cp3.nplan.local", "cp3"] }
+  - { ip: "192.168.14.41", names: ["worker1.nplan.local", "worker1"] }
+  - { ip: "192.168.14.42", names: ["worker2.nplan.local", "worker2"] }
+  - { ip: "192.168.14.43", names: ["worker3.nplan.local", "worker3"] }
+  - { ip: "192.168.14.51", names: ["db-primary.nplan.local", "db-primary", "db1"] }
+  - { ip: "192.168.14.52", names: ["db-replica.nplan.local", "db-replica", "db2"] }
+  - { ip: "192.168.14.61", names: ["nfs.nplan.local", "nfs"] }
+  - { ip: "192.168.14.62", names: ["infra.nplan.local", "infra"] }
+
+neuroplan_dmz_hosts:
+  - { ip: "192.168.24.11", names: ["lb1.dmz.nplan.local", "lb1-dmz"] }
+  - { ip: "192.168.24.12", names: ["lb2.dmz.nplan.local", "lb2-dmz"] }
+
+neuroplan_internal_hosts:
+  - { ip: "192.168.34.11", names: ["lb1.k8s.nplan.local", "lb1-k8s"] }
+  - { ip: "192.168.34.12", names: ["lb2.k8s.nplan.local", "lb2-k8s"] }
+  - { ip: "192.168.34.21", names: ["devops.k8s.nplan.local", "devops-k8s"] }
+  - { ip: "192.168.34.31", names: ["cp1.k8s.nplan.local", "cp1-k8s"] }
+  - { ip: "192.168.34.32", names: ["cp2.k8s.nplan.local", "cp2-k8s"] }
+  - { ip: "192.168.34.33", names: ["cp3.k8s.nplan.local", "cp3-k8s"] }
+  - { ip: "192.168.34.41", names: ["worker1.k8s.nplan.local", "worker1-k8s"] }
+  - { ip: "192.168.34.42", names: ["worker2.k8s.nplan.local", "worker2-k8s"] }
+  - { ip: "192.168.34.43", names: ["worker3.k8s.nplan.local", "worker3-k8s"] }
+  - { ip: "192.168.34.62", names: ["infra.k8s.nplan.local", "infra-k8s"] }
+  # Compatibility alias only; Kubernetes uses the VIP address as its canonical endpoint.
+  - { ip: "192.168.34.100", names: ["api.k8s.neuroplan.local"] }
+
+neuroplan_data_hosts:
+  - { ip: "192.168.44.41", names: ["worker1.data.nplan.local", "worker1-data"] }
+  - { ip: "192.168.44.42", names: ["worker2.data.nplan.local", "worker2-data"] }
+  - { ip: "192.168.44.43", names: ["worker3.data.nplan.local", "worker3-data"] }
+  - { ip: "192.168.44.51", names: ["db-primary.data.nplan.local", "db-primary-data"] }
+  - { ip: "192.168.44.52", names: ["db-replica.data.nplan.local", "db-replica-data"] }
+  - { ip: "192.168.44.61", names: ["nfs.data.nplan.local", "nfs-data"] }
+  - { ip: "192.168.44.62", names: ["infra.data.nplan.local", "infra-data"] }
+
+neuroplan_host_records: >-
+  {{
+    neuroplan_management_hosts
+    + neuroplan_dmz_hosts
+    + neuroplan_internal_hosts
+    + neuroplan_data_hosts
+  }}

@@ -1,0 +1,100 @@
+---
+- name: Read-only preflight for existing network and OS
+  hosts: all
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+
+  tasks:
+    - name: Require CentOS Stream 9 family
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.os_family == "RedHat"
+          - ansible_facts.distribution_major_version == "9"
+        fail_msg: "Expected a CentOS Stream 9 compatible node"
+
+    - name: Check the cgroup v2 controller file
+      ansible.builtin.stat:
+        path: /sys/fs/cgroup/cgroup.controllers
+      register: cgroup_v2
+      when: inventory_hostname in groups['kubernetes_nodes']
+
+    - name: Require cgroup v2 for Kubernetes 1.35
+      ansible.builtin.assert:
+        that:
+          - cgroup_v2.stat.exists
+          - cgroup_v2.stat.isreg
+        fail_msg: >-
+          Kubernetes 1.35 requires cgroup v2 in this design.
+          Stop and correct the VM boot policy; do not bypass the Kubespray safety check.
+      when: inventory_hostname in groups['kubernetes_nodes']
+
+    - name: Verify fixed Management and Internal addresses exist
+      ansible.builtin.assert:
+        that:
+          - management_ip in ansible_facts.all_ipv4_addresses
+          - internal_ip in ansible_facts.all_ipv4_addresses
+        fail_msg: >-
+          {{ inventory_hostname }} does not have its fixed Management/Internal IP.
+          This playbook will not change network configuration.
+
+    - name: Verify worker Data address exists
+      ansible.builtin.assert:
+        that:
+          - data_ip in ansible_facts.all_ipv4_addresses
+      when: inventory_hostname in groups['worker_nodes']
+
+    - name: Count default routes
+      ansible.builtin.shell: |
+        set -o pipefail
+        ip -4 route show default | wc -l
+      args:
+        executable: /bin/bash
+      register: default_route_count
+      changed_when: false
+
+    - name: Require exactly one existing default route
+      ansible.builtin.assert:
+        that:
+          - default_route_count.stdout | int == 1
+        fail_msg: "Expected exactly one existing default route; network changes are owned by Network team"
+
+    - name: Read DNS, NTP, swap, SELinux and firewalld state
+      ansible.builtin.shell: |
+        set -u
+        echo '--- DNS ---'
+        for name in \
+          cp1.nplan.local \
+          lb1.dmz.nplan.local \
+          cp1.k8s.nplan.local \
+          worker1.data.nplan.local; do
+          getent ahostsv4 "${name}" | head -n 1 || true
+        done
+        echo '--- NTP ---'
+        timedatectl status || true
+        chronyc tracking || true
+        echo '--- SWAP (Kubespray-owned on cluster nodes) ---'
+        swapon --show || true
+        echo '--- SELINUX (Kubespray-owned on cluster nodes) ---'
+        getenforce || true
+        echo '--- FIREWALLD (Network team owns policy) ---'
+        systemctl is-active firewalld || true
+      args:
+        executable: /bin/bash
+      register: state_report
+      changed_when: false
+
+    - name: Show preflight state
+      ansible.builtin.debug:
+        var: state_report.stdout_lines
+
+    - name: Test Internet HTTPS without changing configuration
+      ansible.builtin.uri:
+        url: https://registry.k8s.io/v2/
+        method: GET
+        status_code: [200, 401, 403]
+        timeout: 10
+      register: internet_test
+      retries: 3
+      delay: 2
+      until: internet_test.status in [200, 401, 403]

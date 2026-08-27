@@ -1,0 +1,68 @@
+---
+all:
+  hosts:
+    devops:
+      ansible_connection: local
+      ansible_host: 127.0.0.1
+      ansible_python_interpreter: /usr/bin/python3.11
+      management_ip: 192.168.14.21
+      internal_ip: 192.168.34.21
+      data_ip: 192.168.44.21
+      host_name: devops
+    cp1:
+      ansible_host: 192.168.14.31
+      management_ip: 192.168.14.31
+      internal_ip: 192.168.34.31
+      host_name: cp1
+    cp2:
+      ansible_host: 192.168.14.32
+      management_ip: 192.168.14.32
+      internal_ip: 192.168.34.32
+      host_name: cp2
+    cp3:
+      ansible_host: 192.168.14.33
+      management_ip: 192.168.14.33
+      internal_ip: 192.168.34.33
+      host_name: cp3
+    worker1:
+      ansible_host: 192.168.14.41
+      management_ip: 192.168.14.41
+      internal_ip: 192.168.34.41
+      data_ip: 192.168.44.41
+      host_name: worker1
+    worker2:
+      ansible_host: 192.168.14.42
+      management_ip: 192.168.14.42
+      internal_ip: 192.168.34.42
+      data_ip: 192.168.44.42
+      host_name: worker2
+    worker3:
+      ansible_host: 192.168.14.43
+      management_ip: 192.168.14.43
+      internal_ip: 192.168.34.43
+      data_ip: 192.168.44.43
+      host_name: worker3
+
+  vars:
+    ansible_user: k8sadmin
+    ansible_become: true
+    ansible_python_interpreter: /usr/bin/python3
+
+  children:
+    devops_control:
+      hosts:
+        devops:
+    kubernetes_nodes:
+      children:
+        control_plane_nodes:
+        worker_nodes:
+    control_plane_nodes:
+      hosts:
+        cp1:
+        cp2:
+        cp3:
+    worker_nodes:
+      hosts:
+        worker1:
+        worker2:
+        worker3:

@@ -1,0 +1,24 @@
+[Unit]
+Description=Neuroplan On-Premise Private OCI Registry
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+Image={{ registry_image }}
+ContainerName=onprem-registry
+Pull=never
+PublishPort={{ registry_bind_ip }}:{{ registry_port }}:5000/tcp
+Volume={{ registry_data_dir }}:/var/lib/registry:Z
+Environment=REGISTRY_HTTP_ADDR=0.0.0.0:5000
+Environment=REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry
+Environment=REGISTRY_STORAGE_DELETE_ENABLED=false
+Environment=REGISTRY_LOG_LEVEL=info
+
+[Service]
+Restart=always
+RestartSec=5
+TimeoutStartSec=300
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

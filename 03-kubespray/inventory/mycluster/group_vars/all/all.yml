@@ -1,0 +1,24 @@
+---
+loadbalancer_apiserver:
+  address: 192.168.34.100
+  port: 6443
+loadbalancer_apiserver_localhost: false
+
+supplementary_addresses_in_ssl_keys:
+  - 192.168.34.100
+
+upstream_dns_servers:
+  - 192.168.14.62
+
+ntp_enabled: true
+ntp_manage_config: true
+ntp_force_sync_immediately: true
+ntp_timezone: Asia/Seoul
+ntp_servers:
+  - "192.168.14.62 iburst"
+
+preinstall_selinux_state: permissive
+ignore_assert_errors: false
+ping_access_ip: true
+unsafe_show_logs: false
+allow_unsupported_distribution_setup: false

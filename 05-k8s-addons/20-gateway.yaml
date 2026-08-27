@@ -1,0 +1,24 @@
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: neuroplan-gateway
+  namespace: application
+  labels:
+    app.kubernetes.io/part-of: neuroplan
+spec:
+  gatewayClassName: nginx
+  listeners:
+    - name: https
+      hostname: app.nplan.local
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: nplan-tls-v1
+      allowedRoutes:
+        namespaces:
+          from: Same

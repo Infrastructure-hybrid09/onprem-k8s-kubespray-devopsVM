@@ -1,0 +1,57 @@
+---
+- name: Validate the managed-node baseline
+  hosts: kubernetes_nodes
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+
+  tasks:
+    - name: Refresh hostname facts
+      ansible.builtin.setup:
+        gather_subset:
+          - network
+
+    - name: Validate hostname and addresses
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.hostname == host_name
+          - management_ip in ansible_facts.all_ipv4_addresses
+          - internal_ip in ansible_facts.all_ipv4_addresses
+
+    - name: Validate Python and sudo
+      ansible.builtin.command: python3 --version
+      changed_when: false
+
+    - name: Validate every canonical project host name and alias
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/validate-host-records.yml"
+
+    - name: Validate SSH service
+      ansible.builtin.command: systemctl is-active sshd
+      changed_when: false
+
+    - name: Check the retired project shell profile
+      ansible.builtin.stat:
+        path: /etc/profile.d/00-neuroplan-role-prompt.sh
+      register: retired_profile
+
+    - name: Require the retired project shell profile to be absent
+      ansible.builtin.assert:
+        that:
+          - not retired_profile.stat.exists
+
+- name: Validate the DevOps naming baseline
+  hosts: devops_control
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Validate DevOps hostname and existing addresses
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.hostname == host_name
+          - management_ip in ansible_facts.all_ipv4_addresses
+          - internal_ip in ansible_facts.all_ipv4_addresses
+          - data_ip in ansible_facts.all_ipv4_addresses
+
+    - name: Validate every canonical project host name and alias on DevOps
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/validate-host-records.yml"

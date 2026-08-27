@@ -1,0 +1,66 @@
+---
+all:
+  hosts:
+    cp1:
+      ansible_host: 192.168.14.31
+      ip: 192.168.34.31
+      access_ip: 192.168.34.31
+      etcd_member_name: etcd1
+    cp2:
+      ansible_host: 192.168.14.32
+      ip: 192.168.34.32
+      access_ip: 192.168.34.32
+      etcd_member_name: etcd2
+    cp3:
+      ansible_host: 192.168.14.33
+      ip: 192.168.34.33
+      access_ip: 192.168.34.33
+      etcd_member_name: etcd3
+    worker1:
+      ansible_host: 192.168.14.41
+      ip: 192.168.34.41
+      access_ip: 192.168.34.41
+      node_labels:
+        node-role.kubernetes.io/worker: "true"
+        neuroplan.io/data-ip: "192.168.44.41"
+    worker2:
+      ansible_host: 192.168.14.42
+      ip: 192.168.34.42
+      access_ip: 192.168.34.42
+      node_labels:
+        node-role.kubernetes.io/worker: "true"
+        neuroplan.io/data-ip: "192.168.44.42"
+    worker3:
+      ansible_host: 192.168.14.43
+      ip: 192.168.34.43
+      access_ip: 192.168.34.43
+      node_labels:
+        node-role.kubernetes.io/worker: "true"
+        neuroplan.io/data-ip: "192.168.44.43"
+
+  vars:
+    ansible_user: k8sadmin
+    ansible_python_interpreter: /usr/bin/python3
+
+  children:
+    kube_control_plane:
+      hosts:
+        cp1:
+        cp2:
+        cp3:
+    etcd:
+      hosts:
+        cp1:
+        cp2:
+        cp3:
+    kube_node:
+      hosts:
+        worker1:
+        worker2:
+        worker3:
+    k8s_cluster:
+      children:
+        kube_control_plane:
+        kube_node:
+    calico_rr:
+      hosts: {}

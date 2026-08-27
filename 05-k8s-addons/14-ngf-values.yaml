@@ -1,0 +1,61 @@
+---
+nginxGateway:
+  kind: deployment
+  gatewayClassName: nginx
+  gatewayControllerName: gateway.nginx.org/nginx-gateway-controller
+  replicas: 2
+  image:
+    repository: 192.168.34.21:5000/neuroplan/nginx-gateway-fabric
+    tag: 2.6.7
+    pullPolicy: IfNotPresent
+  productTelemetry:
+    enable: false
+  nodeSelector:
+    node-role.kubernetes.io/worker: "true"
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: nginx-gateway-fabric
+              app.kubernetes.io/instance: ngf
+          topologyKey: kubernetes.io/hostname
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+nginx:
+  kind: deployment
+  replicas: 3
+  image:
+    repository: 192.168.34.21:5000/neuroplan/nginx-gateway-fabric-nginx
+    tag: 2.6.7
+    pullPolicy: IfNotPresent
+  pod:
+    nodeSelector:
+      node-role.kubernetes.io/worker: "true"
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                gateway.networking.k8s.io/gateway-name: neuroplan-gateway
+            topologyKey: kubernetes.io/hostname
+  container:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+  service:
+    type: NodePort
+    externalTrafficPolicy: Cluster
+    nodePorts:
+      - port: 30443
+        listenerPort: 443

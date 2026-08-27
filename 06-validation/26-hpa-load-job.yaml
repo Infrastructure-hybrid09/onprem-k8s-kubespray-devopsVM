@@ -1,0 +1,50 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: validation-hpa-load
+  namespace: application
+  labels:
+    validation.neuroplan.io/owned: "true"
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 240
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        validation.neuroplan.io/owned: "true"
+        validation.neuroplan.io/component: loadgen
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/worker: "true"
+      restartPolicy: Never
+      containers:
+        - name: load
+          image: 192.168.34.21:5000/neuroplan/busybox:1.36.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              url="http://validation-echo.application.svc.neuroplan.local/validation/load"
+              if ! wget -q -O /dev/null "$url"; then
+                echo "load target DNS/service preflight failed: $url" >&2
+                exit 1
+              fi
+              end="$(( $(date +%s) + 180 ))"
+              for worker in 1 2 3 4 5 6 7 8 9 10 11 12; do
+                (
+                  while [ "$(date +%s)" -lt "$end" ]; do
+                    wget -q -O /dev/null "$url" || sleep 1
+                  done
+                ) &
+              done
+              wait
+          resources:
+            requests:
+              cpu: 10m
+              memory: 8Mi
+            limits:
+              cpu: 500m
+              memory: 32Mi

@@ -1,0 +1,27 @@
+---
+kube_version: "1.35.4"
+cluster_name: neuroplan.local
+
+container_manager: containerd
+kube_network_plugin: calico
+kube_proxy_mode: ipvs
+dns_mode: coredns
+
+kube_pods_subnet: 10.244.0.0/16
+kube_service_addresses: 10.96.0.0/12
+kube_network_node_prefix: 24
+
+kubelet_fail_swap_on: true
+kubelet_max_pods: 110
+# kubeadm static-pod health probes call /livez and /readyz without credentials.
+# Keep anonymous authentication enabled; authorization still protects API data.
+kube_api_anonymous_auth: true
+
+# Encrypt Kubernetes Secret resources before they are stored in etcd.
+kube_encrypt_secret_data: true
+kube_encryption_algorithm: "secretbox"
+kube_encryption_resources:
+  - secrets
+
+kubeconfig_localhost: true
+kubectl_localhost: true

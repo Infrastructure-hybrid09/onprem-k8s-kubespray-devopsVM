@@ -1,0 +1,353 @@
+# ==============================================================================
+# 팀원이 반드시 수정해야 하는 항목 체크리스트
+# ==============================================================================
+# [ ] Namespace 이름: 아래 모든 `namespace: my-app`을 같은 값으로 수정
+# [ ] 애플리케이션 이름: `my-app` 및 관련 리소스 이름/label을 일관되게 수정
+# [ ] Container Image: image의 Registry/Project/Image/Tag 수정
+# [ ] Port: 실제 애플리케이션 listen port와 containerPort/Service/probe 연결 확인
+# [ ] Resources: 서비스 특성에 맞게 requests/limits 수정
+# [ ] Probe: 실제 health endpoint의 path/port와 시작 시간에 맞게 수정
+# [ ] ConfigMap/Secret: 환경 변수 key/value를 애플리케이션에 맞게 수정
+# [ ] Private Registry 사용 시: imagePullSecret 생성 후 아래 예제 활성화
+# [ ] securityContext: 사용하는 image가 설정을 지원하는지 확인
+# [ ] replicas/RollingUpdate: 가용성 및 클러스터 용량에 맞게 확인
+#
+# 빠른 적용 순서:
+#   1) 이 파일에서 `# [수정 필요]`를 검색하여 값을 수정한다.
+#   2) kubectl apply --dry-run=server -f 01-deployment-service-template.yaml
+#   3) kubectl apply -f 01-deployment-service-template.yaml
+#   4) kubectl -n <NAMESPACE> rollout status deployment/<APP_NAME>
+#
+# bare Pod는 업데이트/복구/replica 관리를 직접 해야 하므로 일반 배포에는 권장하지 않는다.
+# 애플리케이션은 아래 Deployment를 사용하고, 일회성 확인에만 별도 Pod 예제를 사용한다.
+#
+# ==============================================================================
+# Registry / Container Image 사용 안내
+# ==============================================================================
+# Registry 주소가 확정되지 않았다면 임의 주소를 만들지 말고 다음 형식을 사용한다.
+#   <REGISTRY>/<PROJECT>/<IMAGE_NAME>:<TAG>
+#
+# Docker Hub 예시:
+#   <DOCKERHUB_USERNAME>/frontend:v1.0.0
+#   <DOCKERHUB_USERNAME>/backend:v1.0.0
+#
+# 권장 사항:
+# - `latest` 대신 빌드마다 바뀌지 않는 version tag 또는 image digest를 사용한다.
+# - Private Registry 인증 Secret은 Pod와 같은 Namespace에 있어야 한다.
+# - Secret 생성 예시(실제 값을 shell history/Git에 노출하지 않도록 주의):
+#     kubectl -n <NAMESPACE> create secret docker-registry registry-pull-secret \
+#       --docker-server=<REGISTRY> \
+#       --docker-username=<USERNAME> \
+#       --docker-password='<ACCESS_TOKEN>'
+# - 생성 후 Deployment의 `spec.template.spec.imagePullSecrets` 예제를 활성화한다.
+# - imagePullPolicy:
+#     IfNotPresent: 노드에 같은 image가 있으면 재사용한다. version tag 사용 시 일반적이다.
+#     Always: Pod 시작 때마다 Registry에서 image digest를 확인한다.
+#     Never: 노드에 미리 준비된 image만 사용하므로 일반 배포에는 권장하지 않는다.
+# ==============================================================================
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  # [수정 필요] 팀/서비스별 Namespace 이름. 소문자, 숫자, '-' 조합을 권장한다.
+  name: my-app
+  labels:
+    # 리소스 검색과 비용/소유권 구분에 활용하는 label이다.
+    app.kubernetes.io/managed-by: kubectl
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  # [수정 필요] 애플리케이션 이름에 맞춰 수정한다.
+  name: my-app-config
+  # [수정 필요] 위에서 만든 Namespace와 반드시 같아야 한다.
+  namespace: my-app
+  labels:
+    # [수정 필요] 아래 Deployment/Service의 app label과 같은 값으로 유지한다.
+    app.kubernetes.io/name: my-app
+data:
+  # ConfigMap은 비밀번호가 아닌 일반 설정만 저장한다.
+  # [수정 필요] 애플리케이션이 사용하는 환경 변수 key/value로 수정한다.
+  APP_LOG_LEVEL: "INFO"
+  FEATURE_FLAG_EXAMPLE: "false"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  # [수정 필요] 애플리케이션 이름에 맞춰 수정한다.
+  name: my-app-secret
+  # [수정 필요] 위에서 만든 Namespace와 반드시 같아야 한다.
+  namespace: my-app
+  labels:
+    # [수정 필요] 아래 Deployment/Service의 app label과 같은 값으로 유지한다.
+    app.kubernetes.io/name: my-app
+type: Opaque
+# 예제 편의를 위한 stringData이며 API Server가 저장할 때 data로 변환한다.
+# Base64는 암호화가 아니다. 운영 Secret 원문을 Git에 커밋하지 말고,
+# 팀의 Secret Manager/배포 파이프라인 또는 `kubectl create secret` 사용을 권장한다.
+stringData:
+  # [수정 필요] 예제 값을 실제 배포 시 안전한 방식으로 주입하거나 교체한다.
+  DB_USERNAME: "<DB_USERNAME>"
+  # [수정 필요] 실제 비밀번호를 이 템플릿에 커밋하지 않는다.
+  DB_PASSWORD: "<DB_PASSWORD>"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # [수정 필요] 애플리케이션 이름. 관련 이름과 label도 함께 수정한다.
+  name: my-app
+  # [수정 필요] 위에서 만든 Namespace와 반드시 같아야 한다.
+  namespace: my-app
+  labels:
+    # [수정 필요] 애플리케이션 식별자. selector/Pod label과 같은 값이어야 한다.
+    app.kubernetes.io/name: my-app
+    app.kubernetes.io/component: application
+spec:
+  # [수정 필요] 기본 2개는 Pod 한 개 장애 중에도 서비스를 유지하기 위한 시작값이다.
+  replicas: 2
+  # 이전 ReplicaSet을 보관할 개수. 롤백 이력과 etcd 사용량 사이의 균형값이다.
+  revisionHistoryLimit: 3
+  # 새 버전 배포가 이 시간 동안 진전되지 않으면 rollout 실패로 표시한다.
+  progressDeadlineSeconds: 600
+
+  # RollingUpdate는 Pod를 한 번에 모두 중단하지 않고 순차 교체한다.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # [수정 필요] 배포 중 replicas보다 추가로 만들 수 있는 Pod 수/비율.
+      # 25%는 배포 속도와 여유 자원의 균형을 위한 일반적인 시작값이다.
+      maxSurge: 25%
+      # [수정 필요] 배포 중 동시에 사용할 수 없어도 되는 Pod 수/비율.
+      # 0은 가용성을 우선하지만 새 Pod용 여유 자원이 필요하다.
+      maxUnavailable: 0
+
+  # Deployment selector는 생성 후 변경이 제한되는 값이다.
+  # 아래 matchLabels와 template.metadata.labels는 반드시 정확히 일치해야 한다.
+  selector:
+    matchLabels:
+      # [수정 필요] 애플리케이션 이름 변경 시 두 위치를 함께 수정한다.
+      app.kubernetes.io/name: my-app
+      app.kubernetes.io/instance: my-app
+
+  template:
+    metadata:
+      labels:
+        # [수정 필요] 위 selector.matchLabels와 반드시 같은 값으로 유지한다.
+        app.kubernetes.io/name: my-app
+        app.kubernetes.io/instance: my-app
+        app.kubernetes.io/component: application
+    spec:
+      # Kubernetes API를 호출하지 않는 일반 애플리케이션은 token 자동 주입을 끈다.
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+
+      # Pod 수준 보안 설정. RuntimeDefault seccomp profile로 위험한 syscall을 제한한다.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Private Registry를 사용할 때만 아래 두 줄의 주석을 제거한다.
+      # Secret은 이 Deployment와 같은 Namespace에 먼저 생성되어 있어야 한다.
+      # [수정 필요] Private Registry 사용 시 Secret 이름을 확인하고 활성화한다.
+      # imagePullSecrets:
+      #   - name: registry-pull-secret
+
+      containers:
+        # [수정 필요] 애플리케이션에 맞는 container 이름으로 수정한다.
+        - name: my-app
+          # [수정 필요] 실제 image로 반드시 교체한다. 존재하지 않는 주소를 임의 생성하지 않는다.
+          image: "<REGISTRY>/<PROJECT>/<IMAGE_NAME>:<TAG>"
+          # [수정 필요] version tag 사용 시 보통 IfNotPresent, 매번 확인이 필요하면 Always.
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            # 이름을 `http`로 두면 Service와 Probe가 숫자 대신 이 이름을 참조할 수 있다.
+            - name: http
+              # [수정 필요] 애플리케이션 프로세스가 실제로 listen하는 port.
+              # containerPort는 문서화/연결 기준이며, 프로세스가 이 port를 열도록 만들지는 않는다.
+              containerPort: 8080
+              protocol: TCP
+
+          # Container 수준 보안 설정이다.
+          securityContext:
+            # 자식 프로세스가 더 높은 권한을 얻지 못하게 한다.
+            allowPrivilegeEscalation: false
+            # Linux capability를 모두 제거한다. image가 특정 capability를 요구하면 보안 담당과 검토한다.
+            capabilities:
+              drop:
+                - ALL
+            # [수정 필요] image가 non-root 실행을 지원하면 true로 바꾸는 것을 권장한다.
+            runAsNonRoot: false
+            # [수정 필요] 쓰기 경로가 필요 없는 image라면 true로 강화한다.
+            readOnlyRootFilesystem: false
+
+          # ------------------------------------------------------------------
+          # Resource Requests / Limits
+          # ------------------------------------------------------------------
+          # requests: Scheduler가 Pod 배치 시 보장해야 한다고 계산하는 최소 자원.
+          #           값이 너무 크면 Pod가 Pending, 너무 작으면 노드 과밀 가능성이 커진다.
+          # limits:   Container가 사용할 수 있는 최대 자원.
+          #           CPU 초과 시 throttling, Memory 초과 시 OOMKilled될 수 있다.
+          # 아래 값은 측정 전의 초기값일 뿐이다. 배포 후 metrics를 보고 조정한다.
+          #
+          # 서비스 유형별 초기 권장 예시:
+          # - React + NGINX Frontend
+          #     requests: cpu 50m,  memory 64Mi
+          #     limits:   cpu 250m, memory 256Mi
+          # - Spring Boot Backend
+          #     requests: cpu 500m, memory 512Mi
+          #     limits:   cpu 1000m, memory 1Gi
+          # - 일반 경량 API
+          #     requests: cpu 100m, memory 128Mi
+          #     limits:   cpu 500m, memory 512Mi
+          # - 테스트용 경량 Container
+          #     requests: cpu 10m,  memory 32Mi
+          #     limits:   cpu 100m, memory 128Mi
+          resources:
+            requests:
+              # [수정 필요] 위 예시와 실제 사용량에 맞게 수정한다.
+              cpu: 100m
+              # [수정 필요] 위 예시와 실제 사용량에 맞게 수정한다.
+              memory: 128Mi
+            limits:
+              # [수정 필요] CPU 최대 사용량. 1000m = CPU core 1개이다.
+              cpu: 500m
+              # [수정 필요] Memory 최대 사용량. 초과 시 OOMKilled 가능성이 있다.
+              memory: 512Mi
+
+          # ------------------------------------------------------------------
+          # readinessProbe: "지금 트래픽을 받을 준비가 되었는가?"
+          # ------------------------------------------------------------------
+          # 실패 시: Pod는 살아 있지만 Service endpoint에서 제외되어 새 트래픽을 받지 않는다.
+          # Container를 재시작하지는 않는다.
+          # 권장 시작 예: initialDelaySeconds 5~15, periodSeconds 5~10.
+          readinessProbe:
+            httpGet:
+              # [수정 필요] 인증 없이 200~399를 반환하는 실제 readiness path.
+              path: /readyz
+              # [수정 필요] containerPort의 이름 `http` 또는 실제 port 숫자.
+              port: http
+            # [수정 필요] 빠른 앱 5초 전후, 시작이 느리면 startupProbe 사용을 권장한다.
+            initialDelaySeconds: 5
+            # [수정 필요] 일반적으로 5~10초 간격을 권장한다.
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ------------------------------------------------------------------
+          # livenessProbe: "프로세스가 교착 없이 정상 동작 중인가?"
+          # ------------------------------------------------------------------
+          # 실패 시: kubelet이 Container를 재시작한다.
+          # DB/외부 API 장애처럼 재시작으로 해결되지 않는 의존성은 검사하지 않는 것이 좋다.
+          # 권장 시작 예: initialDelaySeconds 15~60, periodSeconds 10~30.
+          livenessProbe:
+            httpGet:
+              # [수정 필요] 애플리케이션 자체 생존 여부만 확인하는 실제 liveness path.
+              path: /healthz
+              # [수정 필요] containerPort의 이름 `http` 또는 실제 port 숫자.
+              port: http
+            # [수정 필요] 앱의 정상 시작 시간보다 충분히 길게 설정한다.
+            initialDelaySeconds: 20
+            # [수정 필요] 일반적으로 10~30초 간격을 권장한다.
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ------------------------------------------------------------------
+          # startupProbe 선택 예제: Spring Boot 등 시작이 오래 걸리는 앱
+          # ------------------------------------------------------------------
+          # 목적: 최초 기동이 끝날 때까지 readiness/liveness 검사를 시작하지 않게 한다.
+          # 실패 시: failureThreshold까지 계속 실패하면 kubelet이 Container를 재시작한다.
+          # 아래 예시는 5초 간격 x 60회 = 최대 약 5분의 시작 시간을 허용한다.
+          # Spring Boot 권장 시작 예: initialDelaySeconds 0~10, periodSeconds 5~10.
+          # 사용할 때 아래 블록 전체의 주석을 제거한다.
+          # startupProbe:
+          #   httpGet:
+          #     # [수정 필요] 기동 완료 시 200~399를 반환하는 실제 startup path.
+          #     path: /healthz
+          #     # [수정 필요] containerPort의 이름 `http` 또는 실제 port 숫자.
+          #     port: http
+          #   # [수정 필요] 필요 시 0~10초 정도로 조정한다.
+          #   initialDelaySeconds: 0
+          #   # [수정 필요] 일반적으로 5~10초 간격을 권장한다.
+          #   periodSeconds: 5
+          #   timeoutSeconds: 2
+          #   failureThreshold: 60
+          #   successThreshold: 1
+
+          # env는 개별 값/개별 key를 명시적으로 주입할 때 사용한다.
+          env:
+            # [수정 필요] 일반 문자열 환경 변수 예제.
+            - name: APP_NAME
+              # [수정 필요] 애플리케이션이 기대하는 값으로 수정한다.
+              value: "my-app"
+            # ConfigMap의 특정 key 하나만 다른 환경 변수 이름으로 연결하는 예제.
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  # [수정 필요] 위 ConfigMap 이름과 같아야 한다.
+                  name: my-app-config
+                  # [수정 필요] 위 ConfigMap data에 존재하는 key여야 한다.
+                  key: APP_LOG_LEVEL
+            # Secret의 특정 key 하나만 연결하는 예제.
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  # [수정 필요] 위 Secret 이름과 같아야 한다.
+                  name: my-app-secret
+                  # [수정 필요] 위 Secret stringData/data에 존재하는 key여야 한다.
+                  key: DB_PASSWORD
+
+          # envFrom은 ConfigMap/Secret의 모든 key를 한 번에 환경 변수로 가져온다.
+          # prefix를 사용해 기존 변수와의 이름 충돌을 줄였다.
+          envFrom:
+            - prefix: CONFIG_
+              configMapRef:
+                # [수정 필요] 위 ConfigMap 이름과 같아야 한다.
+                name: my-app-config
+            - prefix: SECRET_
+              secretRef:
+                # [수정 필요] 위 Secret 이름과 같아야 한다.
+                name: my-app-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # [수정 필요] 일반적으로 Deployment와 같은 애플리케이션 이름을 사용한다.
+  name: my-app
+  # [수정 필요] Deployment와 같은 Namespace여야 한다.
+  namespace: my-app
+  labels:
+    # [수정 필요] Deployment의 app label과 같은 값으로 유지한다.
+    app.kubernetes.io/name: my-app
+spec:
+  # 기본값은 클러스터 내부 통신용 ClusterIP이다.
+  # 외부 노출이 필요해도 임의의 NodePort를 만들지 말고 팀의 Gateway/Ingress에
+  # 이 Service를 backend로 연결한다. TLS, hostname, 접근 정책을 한곳에서 관리할 수 있다.
+  type: ClusterIP
+  selector:
+    # [수정 필요] Deployment Pod의 label과 정확히 같아야 트래픽이 전달된다.
+    app.kubernetes.io/name: my-app
+    app.kubernetes.io/instance: my-app
+  ports:
+    - name: http
+      protocol: TCP
+      # [수정 필요] Service 사용자가 클러스터 내부에서 접속하는 port.
+      # 예: http://my-app.my-app.svc.neuroplan.local:80
+      port: 80
+      # targetPort는 Service 트래픽이 Pod의 어느 port로 갈지 지정한다.
+      # 여기서는 이름 `http`를 통해 Deployment의 containerPort 8080을 가리킨다.
+      # [수정 필요] container port 이름을 바꿨다면 이 값도 같은 이름/숫자로 수정한다.
+      targetPort: http
+
+# Port 관계 요약:
+#   Client -> Service `port` -> Pod `targetPort` -> Container `containerPort`
+# 예제 기본값:
+#   Client -> Service :80 -> targetPort `http` -> Container :8080

@@ -1,0 +1,13 @@
+---
+calico_version: "3.31.5"
+
+# Multi-NIC guardrail: never auto-select Management or Data as node IP.
+calico_ip_auto_method: "cidr=192.168.34.0/24"
+
+calico_network_backend: vxlan
+calico_ipip_mode: Never
+calico_vxlan_mode: Always
+calico_vxlan_port: 4789
+calico_veth_mtu: 1450
+calico_iptables_backend: Auto
+nat_outgoing: true

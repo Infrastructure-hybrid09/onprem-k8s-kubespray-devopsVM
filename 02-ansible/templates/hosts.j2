@@ -1,0 +1,38 @@
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+
+# ============================================================
+# 1차 프로젝트 - Server List
+# ============================================================
+
+# ------------------------------------------------------------
+# Management Network : 192.168.14.0/24
+# SSH / Ansible / 관리용
+# ------------------------------------------------------------
+{% for host in neuroplan_management_hosts %}
+{{ host.ip }}  {{ host.names | join('  ') }}
+{% endfor %}
+
+# ------------------------------------------------------------
+# DMZ Network : 192.168.24.0/24
+# 외부 Client → LB 진입용
+# ------------------------------------------------------------
+{% for host in neuroplan_dmz_hosts %}
+{{ host.ip }}  {{ host.names | join('  ') }}
+{% endfor %}
+
+# ------------------------------------------------------------
+# Internal Kubernetes Network : 192.168.34.0/24
+# Kubernetes / Node 간 통신
+# ------------------------------------------------------------
+{% for host in neuroplan_internal_hosts %}
+{{ host.ip }}  {{ host.names | join('  ') }}
+{% endfor %}
+
+# ------------------------------------------------------------
+# Data Network : 192.168.44.0/24
+# DB / NFS / Storage / Backend 데이터 통신
+# ------------------------------------------------------------
+{% for host in neuroplan_data_hosts %}
+{{ host.ip }}  {{ host.names | join('  ') }}
+{% endfor %}

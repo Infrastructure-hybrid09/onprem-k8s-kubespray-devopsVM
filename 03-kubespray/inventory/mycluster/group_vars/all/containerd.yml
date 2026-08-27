@@ -1,0 +1,22 @@
+---
+# v2.31.0 default. The project target 2.1.x is documented, but no override is forced.
+containerd_version: "2.2.3"
+
+# This only enables explicit pulls from 192.168.34.21:5000.
+# It does not turn the Distribution registry into a transparent public mirror.
+containerd_registries_mirrors:
+  - prefix: docker.io
+    mirrors:
+      - host: https://registry-1.docker.io
+        capabilities:
+          - pull
+          - resolve
+        skip_verify: false
+  - prefix: "192.168.34.21:5000"
+    server: "http://192.168.34.21:5000"
+    mirrors:
+      - host: "http://192.168.34.21:5000"
+        capabilities:
+          - pull
+          - resolve
+        skip_verify: true

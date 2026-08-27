@@ -1,0 +1,14 @@
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: validation-echo
+  namespace: application
+  labels:
+    validation.neuroplan.io/owned: "true"
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: validation-echo
+      app.kubernetes.io/instance: validation

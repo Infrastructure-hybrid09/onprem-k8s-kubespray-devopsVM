@@ -1,0 +1,81 @@
+# ==============================================================================
+# 테스트용 bare Pod 예제
+# ==============================================================================
+# 이 파일은 image 실행/환경 변수/네트워크를 짧게 확인하는 용도다.
+# bare Pod는 장애 복구, replica, RollingUpdate를 제공하지 않으므로 실제 서비스에는
+# 01-deployment-service-template.yaml의 Deployment 사용을 권장한다.
+#
+# 사용 전 `# [수정 필요]` 항목을 수정한다.
+# 적용: kubectl apply -f 02-test-pod-example.yaml
+# 확인: kubectl -n <NAMESPACE> get pod test-pod -w
+# 로그: kubectl -n <NAMESPACE> logs test-pod
+# 정리: kubectl -n <NAMESPACE> delete pod test-pod
+# ==============================================================================
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  # [수정 필요] 다른 팀원의 Pod와 겹치지 않는 테스트 이름으로 수정한다.
+  name: test-pod
+  # [수정 필요] 미리 존재하는 테스트 대상 Namespace로 수정한다.
+  namespace: my-app
+  labels:
+    # [수정 필요] 테스트할 애플리케이션 이름으로 수정한다.
+    app.kubernetes.io/name: my-app-test
+spec:
+  # 테스트 Container가 종료되어도 무한 재시작하지 않게 한다.
+  # 장시간 실행 프로세스를 시험한다면 OnFailure 또는 Always를 검토한다.
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Private Registry 사용 시 같은 Namespace에 Secret을 생성하고 아래를 활성화한다.
+  # [수정 필요] Private Registry 사용 시 Secret 이름을 확인하고 주석을 제거한다.
+  # imagePullSecrets:
+  #   - name: registry-pull-secret
+
+  containers:
+    # [수정 필요] 테스트 목적에 맞는 container 이름으로 수정한다.
+    - name: test-container
+      # [수정 필요] 실제 테스트 image로 반드시 교체한다.
+      image: "<REGISTRY>/<PROJECT>/<IMAGE_NAME>:<TAG>"
+      # [수정 필요] version tag이면 보통 IfNotPresent, 매번 확인하려면 Always.
+      imagePullPolicy: IfNotPresent
+
+      ports:
+        - name: http
+          # [수정 필요] Container 프로세스가 실제로 listen하는 port.
+          containerPort: 8080
+          protocol: TCP
+
+      env:
+        # [수정 필요] 테스트 image가 사용할 환경 변수 이름과 값으로 수정한다.
+        - name: APP_ENV
+          value: "test"
+
+      # 테스트용 경량 Container 초기 권장값이다.
+      # requests는 배치 시 보장할 최소 자원, limits는 최대 사용 가능 자원이다.
+      resources:
+        requests:
+          # [수정 필요] 실제 최소 CPU 요구량에 맞게 수정한다.
+          cpu: 10m
+          # [수정 필요] 실제 최소 Memory 요구량에 맞게 수정한다.
+          memory: 32Mi
+        limits:
+          # [수정 필요] CPU 초과 시 throttling될 수 있다.
+          cpu: 100m
+          # [수정 필요] Memory 초과 시 OOMKilled될 수 있다.
+          memory: 128Mi
+
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        # [수정 필요] image가 non-root 실행을 지원하면 true로 바꾸는 것을 권장한다.
+        runAsNonRoot: false
+        # [수정 필요] image가 filesystem 쓰기를 요구하지 않으면 true로 강화한다.
+        readOnlyRootFilesystem: false
